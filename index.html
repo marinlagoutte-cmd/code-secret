@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#151a30">
+<meta name="description" content="Jeu de déduction : trouve le code secret de pions de couleur, seul, contre l'ordinateur ou à deux.">
+<title>Code secret</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23151a30'/%3E%3Ccircle cx='10' cy='10' r='5' fill='%23e53935'/%3E%3Ccircle cx='22' cy='10' r='5' fill='%23fdd835'/%3E%3Ccircle cx='10' cy='22' r='5' fill='%231e88e5'/%3E%3Ccircle cx='22' cy='22' r='5' fill='%2343a047'/%3E%3C/svg%3E">
+<style>
+:root {
+  --fond: #151a30; --fond2: #1b2140; --panneau: #232b4f; --bord: #343e6e; --trou: #0c1023;
+  --texte: #eef0fa; --doux: #a6aed3; --accent: #ffb547; --accent-texte: #2a1a00; --ko: #ff8a8a;
+  --gap: clamp(5px, 1.5vw, 9px);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column;
+  background: radial-gradient(120% 70% at 50% 0%, #29336a 0%, var(--fond) 62%) fixed, var(--fond);
+  color: var(--texte); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; touch-action: manipulation; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* Barre du haut */
+.barre { display: flex; align-items: center; gap: 6px; width: 100%; max-width: 600px; margin: 0 auto; padding: max(12px, env(safe-area-inset-top)) 16px 10px; }
+.logo { display: grid; grid-template-columns: repeat(2, 9px); gap: 3px; flex: none; }
+.logo i { width: 9px; height: 9px; border-radius: 50%; }
+h1 { font-size: 1.15rem; margin: 0 auto 0 6px; letter-spacing: .08em; text-transform: uppercase; font-weight: 800; white-space: nowrap; }
+.icone { background: transparent; border: 1px solid var(--bord); border-radius: 10px; min-width: 40px; height: 40px; padding: 0 9px; font-size: .95rem; }
+.icone:hover { background: var(--panneau); }
+
+main { flex: 1; width: 100%; max-width: 600px; margin: 0 auto; padding: 0 16px max(12px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; }
+.ecran { flex: 1; display: flex; flex-direction: column; }
+
+/* Menu */
+h2 { font-size: .78rem; text-transform: uppercase; letter-spacing: .12em; color: var(--doux); margin: 18px 0 8px; font-weight: 700; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mode { position: relative; display: block; }
+.mode input { position: absolute; opacity: 0; pointer-events: none; }
+.mode span { display: block; height: 100%; padding: 12px 13px; border: 2px solid var(--bord); border-radius: 14px; background: var(--fond2); cursor: pointer; transition: border-color .15s, background .15s; }
+.mode i { font-style: normal; font-size: 1.35rem; display: block; line-height: 1.2; }
+.mode b { display: block; font-size: 1rem; margin-top: 2px; }
+.mode small { display: block; color: var(--doux); font-size: .8rem; line-height: 1.3; margin-top: 2px; }
+.mode input:checked + span { border-color: var(--accent); background: #2b2c4c; box-shadow: 0 0 0 3px rgba(255,181,71,.14); }
+.mode input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
+.champs { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 10px; }
+.champ { display: flex; flex-direction: column; gap: 4px; font-size: .84rem; color: var(--doux); }
+.champ input, .champ select { background: var(--fond2); border: 1px solid var(--bord); border-radius: 10px; padding: 9px 10px; color: var(--texte); font-size: 1rem; width: 100%; }
+.case { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: .94rem; cursor: pointer; }
+.case input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; margin: 0; }
+.note { color: var(--doux); font-size: .88rem; margin: 10px 0 0; }
+.principal { background: var(--accent); color: var(--accent-texte); border: 0; border-radius: 14px; padding: 13px 20px; font-weight: 800; font-size: 1.05rem; }
+.principal:hover { filter: brightness(1.07); }
+.secondaire { background: var(--panneau); border: 1px solid var(--bord); border-radius: 14px; padding: 12px 16px; font-weight: 600; }
+.secondaire:hover { background: #2b3460; }
+#btn-jouer { margin: 24px 0 8px; width: 100%; }
+
+/* Écran de passage (2 joueurs) */
+.centre { justify-content: center; align-items: center; text-align: center; }
+.carte { background: var(--panneau); border: 1px solid var(--bord); border-radius: 20px; padding: 30px 22px; max-width: 420px; box-shadow: 0 14px 40px rgba(0,0,0,.4); }
+.carte .grand { font-size: 1.35rem; font-weight: 800; margin: 0 0 8px; }
+.carte p { color: var(--doux); margin: 0 0 20px; }
+.carte .cadenas { font-size: 2.4rem; margin-bottom: 8px; }
+
+/* Plateau */
+#ecran-jeu { --n: 4; --nc: 6; --rc: 2;
+  --p: clamp(24px, calc((min(100vw, 600px) - 150px) / var(--n) - var(--gap)), 44px);
+  --f: max(10px, calc(var(--p) * .32)); }
+.info { display: flex; justify-content: space-between; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; font-size: .88rem; color: var(--doux); padding: 2px 2px 8px; }
+.info b { color: var(--texte); }
+.score { display: flex; justify-content: center; gap: 8px; margin: 0 0 8px; font-size: .95rem; }
+.score span { background: var(--fond2); border: 1px solid var(--bord); border-radius: 999px; padding: 3px 12px; }
+.score span.actif { border-color: var(--accent); }
+.score b { color: var(--accent); margin-left: 6px; }
+.plateau { background: linear-gradient(180deg, var(--panneau), var(--fond2)); border: 1px solid var(--bord); border-radius: 18px; padding: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+.rangee, .secret { display: grid; grid-template-columns: 1.7em 1fr auto; align-items: center; gap: var(--gap); padding: 5px 8px; border-radius: 12px; border: 1px solid transparent; }
+.secret { padding-bottom: 9px; margin-bottom: 4px; border-bottom: 2px dashed var(--bord); border-radius: 12px 12px 0 0; }
+.secret .etiquette { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--doux); text-align: right; }
+.secret .num { text-align: center; }
+ol.rangees { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rangee { scroll-margin: 12px 0 240px; }
+.num { color: var(--doux); font-size: .78rem; text-align: right; font-variant-numeric: tabular-nums; }
+.trous { display: flex; gap: var(--gap); }
+button.trous { background: none; border: 0; padding: 0; border-radius: 999px; justify-self: start; }
+button.trous:hover .pion { filter: brightness(1.12); }
+.rangee.courante { background: rgba(255,181,71,.08); border-color: rgba(255,181,71,.45); }
+.rangee.future { opacity: .38; }
+.trou, .pion, .cache { width: var(--p); height: var(--p); border-radius: 50%; flex: none; }
+.trou { display: grid; place-items: center; background: var(--trou); box-shadow: inset 0 2px 6px rgba(0,0,0,.85), 0 1px 0 rgba(255,255,255,.06); border: 0; padding: 0; }
+button.trou.curseur { box-shadow: inset 0 2px 6px rgba(0,0,0,.85), 0 0 0 3px var(--accent); }
+.pion {
+  display: grid; place-items: center; user-select: none; -webkit-user-select: none; line-height: 1;
+  background: radial-gradient(circle at 34% 28%, rgba(255,255,255,.75) 0 6%, rgba(255,255,255,0) 42%), var(--c);
+  box-shadow: inset 0 -3px 6px rgba(0,0,0,.35), 0 2px 5px rgba(0,0,0,.5);
+  color: rgba(255,255,255,.85); font-weight: 800; font-size: calc(var(--p) * .34);
+}
+.pion.clair { color: rgba(0,0,0,.55); }
+body.sans-chiffres .pion { color: transparent; }
+.trou .pion { width: 100%; height: 100%; }
+.cache { display: grid; place-items: center; background: linear-gradient(145deg, #3c4679, #232a4f); color: var(--doux); font-weight: 800; box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 2px 4px rgba(0,0,0,.4); }
+.retour { display: grid; grid-template-columns: repeat(var(--rc), var(--f)); gap: 4px; }
+.fb { width: var(--f); height: var(--f); border-radius: 50%; background: var(--trou); box-shadow: inset 0 1px 3px rgba(0,0,0,.85); }
+.fb.noir { background: radial-gradient(circle at 35% 30%, #5d5d5d 0 12%, #050505 60%); box-shadow: 0 0 0 1.5px #c9cfee; }
+.fb.blanc { background: radial-gradient(circle at 35% 30%, #fff 0 25%, #d4d8e6 75%); box-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.pose { animation: pose .2s ease-out; }
+.apparait, .revele { animation: pose .3s ease-out backwards; }
+@keyframes pose { from { transform: scale(.3); opacity: .3; } 70% { transform: scale(1.12); } }
+.secoue { animation: secoue .32s; }
+@keyframes secoue { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+
+/* Console du bas (toujours visible) */
+.console { position: sticky; bottom: 0; margin-top: auto; padding: 8px 0 max(6px, env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(21,26,48,0), var(--fond) 16px); z-index: 2; }
+#message { min-height: 1.4em; text-align: center; font-size: .9rem; color: var(--doux); margin: 4px 0 6px; }
+#message.erreur { color: var(--ko); }
+.palette { display: grid; grid-template-columns: repeat(var(--nc), minmax(0, 1fr)); gap: 6px; }
+.palette button { aspect-ratio: 1; width: 100%; max-width: 54px; justify-self: center; border: 0; padding: 0; background: none; border-radius: 50%; }
+.palette .pion { width: 100%; height: 100%; font-size: clamp(12px, 3.6vw, 18px); transition: transform .08s; }
+.palette button:active .pion { transform: scale(.88); }
+.commandes { display: flex; gap: 8px; margin-top: 10px; }
+.commandes .secondaire { min-width: 56px; font-size: 1.15rem; padding: 10px 14px; }
+#btn-valider { flex: 1; }
+.fin { text-align: center; background: var(--panneau); border: 1px solid var(--bord); border-radius: 16px; padding: 14px; }
+.fin h3 { margin: 0 0 4px; font-size: 1.12rem; }
+.fin p { margin: 0 0 12px; color: var(--doux); white-space: pre-line; }
+.fin .boutons { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.fin .boutons button { flex: 1 1 140px; max-width: 240px; }
+.pense::after { content: ''; display: inline-block; width: 1.2em; text-align: left; animation: points 1.2s steps(4) infinite; }
+@keyframes points { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+
+/* Fenêtres (règles, statistiques) */
+dialog { background: var(--fond2); color: var(--texte); border: 1px solid var(--bord); border-radius: 18px; padding: 0; width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 40px); }
+dialog::backdrop { background: rgba(5,8,20,.72); }
+.dlg-tete { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--bord); position: sticky; top: 0; background: var(--fond2); }
+.dlg-tete h2 { margin: 0; color: var(--texte); font-size: 1rem; letter-spacing: .06em; }
+.dlg-corps { padding: 4px 18px 18px; }
+.dlg-corps h3 { font-size: .95rem; margin: 16px 0 6px; color: var(--accent); }
+.dlg-corps p, .dlg-corps li { color: #d3d8f0; font-size: .93rem; }
+.dlg-corps ul { padding-left: 18px; margin: 6px 0; }
+.mini { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: -2px; background: var(--c); box-shadow: inset 0 -2px 3px rgba(0,0,0,.35); }
+.mini.noir { background: #050505; box-shadow: 0 0 0 1.5px #c9cfee; }
+.mini.blanc { background: #eceef5; }
+kbd { background: var(--panneau); border: 1px solid var(--bord); border-radius: 5px; padding: 0 5px; font-size: .85em; }
+.stat { background: var(--panneau); border: 1px solid var(--bord); border-radius: 12px; padding: 10px 12px; margin: 10px 0; }
+.stat h4 { margin: 0 0 6px; font-size: .9rem; }
+.stat dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 6px; margin: 0; }
+.stat dt { font-size: .72rem; color: var(--doux); text-transform: uppercase; letter-spacing: .05em; }
+.stat dd { margin: 0; font-weight: 700; font-size: 1.05rem; }
+
+.confetti { position: fixed; top: -14px; width: 9px; height: 14px; border-radius: 2px; pointer-events: none; z-index: 50; animation: tombe linear forwards; }
+@keyframes tombe { to { transform: translate(var(--dx), 108vh) rotate(var(--r)); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+@media (min-width: 700px) { .mode small { font-size: .84rem; } }
+@media (max-width: 420px) {
+  .barre { gap: 5px; }
+  h1 { font-size: 1rem; letter-spacing: .04em; }
+  .icone { min-width: 34px; height: 36px; padding: 0 6px; }
+}
+</style>
+</head>
+<body>
+<header class="barre">
+  <span class="logo" aria-hidden="true"><i style="background:#e53935"></i><i style="background:#fdd835"></i><i style="background:#1e88e5"></i><i style="background:#43a047"></i></span>
+  <h1>Code secret</h1>
+  <button type="button" class="icone" id="btn-menu" hidden aria-label="Menu principal" title="Menu principal">⌂</button>
+  <button type="button" class="icone" id="btn-stats" aria-label="Statistiques" title="Statistiques">📊</button>
+  <button type="button" class="icone" id="btn-son" aria-label="Son" title="Son">🔊</button>
+  <button type="button" class="icone" id="btn-regles" aria-label="Règles du jeu" title="Règles du jeu">?</button>
+</header>
+
+<main>
+  <!-- Menu -->
+  <section id="ecran-menu" class="ecran">
+    <form id="form-menu">
+      <h2>Mode de jeu</h2>
+      <div class="modes">
+        <label class="mode"><input type="radio" name="mode" value="solo" checked><span><i>🎯</i><b>Solo</b><small>Trouve le code tiré par l'ordinateur.</small></span></label>
+        <label class="mode"><input type="radio" name="mode" value="defi"><span><i>📅</i><b>Défi du jour</b><small>Le même code pour tous, une partie par jour.</small></span></label>
+        <label class="mode"><input type="radio" name="mode" value="ordi"><span><i>🤖</i><b>Contre l'ordi</b><small>Chacun cache un code à son tour.</small></span></label>
+        <label class="mode"><input type="radio" name="mode" value="duo"><span><i>👥</i><b>2 joueurs</b><small>Sur le même appareil, en manches.</small></span></label>
+      </div>
+      <p id="note-defi" class="note" hidden></p>
+
+      <div id="bloc-joueurs" hidden>
+        <h2>Joueurs</h2>
+        <div class="champs">
+          <label class="champ"><span id="lbl-nom1">Joueur 1</span><input id="nom1" maxlength="14" autocomplete="off" value="Joueur 1"></label>
+          <label class="champ" id="champ-nom2">Joueur 2<input id="nom2" maxlength="14" autocomplete="off" value="Joueur 2"></label>
+          <label class="champ">Manches<select id="manches"><option value="2">2</option><option value="4" selected>4</option><option value="6">6</option></select></label>
+        </div>
+      </div>
+
+      <div id="bloc-reglages">
+        <h2>Réglages</h2>
+        <div class="champs">
+          <label class="champ">Niveau<select id="preset">
+            <option value="classique">Classique</option><option value="super">Super</option>
+            <option value="expert">Expert</option><option value="perso">Personnalisé</option></select></label>
+          <label class="champ">Pions<select id="trous"><option>4</option><option>5</option><option>6</option></select></label>
+          <label class="champ">Couleurs<select id="couleurs"><option>6</option><option>7</option><option>8</option></select></label>
+          <label class="champ">Essais<select id="essais"><option>8</option><option selected>10</option><option>12</option></select></label>
+        </div>
+        <label class="case"><input type="checkbox" id="repet" checked>Couleurs répétées autorisées dans le code</label>
+      </div>
+
+      <h2>Aides</h2>
+      <label class="case"><input type="checkbox" id="possibles">Afficher le nombre de codes encore possibles</label>
+      <label class="case"><input type="checkbox" id="chiffres" checked>Chiffres sur les pions (daltonisme, clavier)</label>
+
+      <button class="principal" id="btn-jouer" type="submit">Jouer</button>
+    </form>
+  </section>
+
+  <!-- Passage de l'appareil (2 joueurs) -->
+  <section id="ecran-passe" class="ecran centre" hidden>
+    <div class="carte">
+      <div class="cadenas" aria-hidden="true">🔒</div>
+      <p class="grand" id="passe-titre"></p>
+      <p id="passe-texte"></p>
+      <button type="button" class="principal" id="btn-passe"></button>
+    </div>
+  </section>
+
+  <!-- Partie -->
+  <section id="ecran-jeu" class="ecran" hidden>
+    <div class="info"><span id="info-gauche"></span><span id="info-droite"></span></div>
+    <div id="score" class="score" hidden></div>
+    <div class="plateau">
+      <div class="secret" id="secret"><span class="num" aria-hidden="true">🔒</span><div class="trous" id="secret-trous"></div><span class="etiquette" id="secret-etiquette"></span></div>
+      <ol class="rangees" id="rangees"></ol>
+    </div>
+    <div class="console">
+      <p id="message" aria-live="polite"></p>
+      <div id="palette" class="palette" role="group" aria-label="Couleurs"></div>
+      <div id="commandes" class="commandes">
+        <button type="button" class="secondaire" id="btn-effacer" aria-label="Effacer un pion" title="Effacer (Retour arrière)">⌫</button>
+        <button type="button" class="secondaire" id="btn-suggestion" aria-label="Suggestion de l'ordinateur" title="Suggestion de l'ordinateur">💡</button>
+        <button type="button" class="principal" id="btn-valider">Valider</button>
+      </div>
+      <div id="ordi-console" class="fin" hidden>
+        <p class="pense">L'ordi réfléchit</p>
+        <div class="boutons"><button type="button" class="secondaire" id="btn-vite">⏩ Accélérer</button></div>
+      </div>
+      <div id="fin" class="fin" hidden aria-live="polite">
+        <h3 id="fin-titre"></h3>
+        <p id="fin-texte"></p>
+        <div class="boutons" id="fin-boutons"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlg-regles" aria-labelledby="titre-regles">
+  <div class="dlg-tete"><h2 id="titre-regles">Règles du jeu</h2><form method="dialog"><button class="icone" aria-label="Fermer">✕</button></form></div>
+  <div class="dlg-corps">
+    <h3>Le but</h3>
+    <p>Trouver le code secret : une rangée de 4 pions de couleur choisis parmi 6 (jusqu'à 6 pions et 8 couleurs dans les réglages). Une même couleur peut revenir plusieurs fois, sauf si le réglage l'interdit.</p>
+    <h3>À chaque essai</h3>
+    <p>Tu proposes une rangée complète. La réponse s'affiche à droite :</p>
+    <ul>
+      <li><span class="mini noir"></span> pion noir : une bonne couleur à la bonne place ;</li>
+      <li><span class="mini blanc"></span> pion blanc : une bonne couleur, mais mal placée.</li>
+    </ul>
+    <p>Les noirs sont toujours rangés en premier : la position des pions de réponse ne dit pas quel pion est concerné. Tu as 10 essais (8 à 12 selon les réglages).</p>
+    <h3>Couleurs répétées</h3>
+    <p>Chaque pion du code ne compte qu'une fois. Code <span class="mini" style="--c:#e53935"></span> <span class="mini" style="--c:#e53935"></span> <span class="mini" style="--c:#43a047"></span> <span class="mini" style="--c:#1e88e5"></span>, essai <span class="mini" style="--c:#e53935"></span> <span class="mini" style="--c:#43a047"></span> <span class="mini" style="--c:#e53935"></span> <span class="mini" style="--c:#fdd835"></span> : 1 noir (le premier rouge) et 2 blancs (le vert et le second rouge). Le jaune ne rapporte rien.</p>
+    <h3>Les modes</h3>
+    <ul>
+      <li><b>Solo</b> : l'ordinateur tire un code au hasard. 💡 te propose un essai si tu bloques.</li>
+      <li><b>Défi du jour</b> : le même code pour tout le monde aujourd'hui, réglages classiques, une seule partie. Ta série de jours gagnés est comptée et tu peux partager ton résultat.</li>
+      <li><b>Contre l'ordi</b> : manches alternées. Tu cherches le code de l'ordi, puis il cherche le tien. Il ne triche pas : il ne raisonne qu'avec les réponses.</li>
+      <li><b>2 joueurs</b> : sur le même appareil. Chacun cache un code à son tour ; un écran de passage évite de voir le code de l'autre.</li>
+    </ul>
+    <h3>Les points (contre l'ordi, 2 joueurs)</h3>
+    <p>Celui qui cache le code marque 1 point par essai de l'autre, plus 1 point de bonus si son code n'est pas trouvé. Chacun cache autant de fois (nombre de manches pair) ; le plus de points gagne.</p>
+    <h3>Commandes</h3>
+    <ul>
+      <li>Touche une couleur : elle remplit le trou entouré, puis passe au suivant.</li>
+      <li>Touche un trou pour le choisir ; touche-le encore pour le vider.</li>
+      <li>Touche une rangée déjà jouée pour la recopier.</li>
+      <li>Clavier : <kbd>1</kbd>…<kbd>8</kbd> couleurs, <kbd>←</kbd> <kbd>→</kbd> trou, <kbd>⌫</kbd> efface, <kbd>Entrée</kbd> valide.</li>
+    </ul>
+  </div>
+</dialog>
+
+<dialog id="dlg-stats" aria-labelledby="titre-stats">
+  <div class="dlg-tete"><h2 id="titre-stats">Statistiques</h2><form method="dialog"><button class="icone" aria-label="Fermer">✕</button></form></div>
+  <div class="dlg-corps">
+    <div id="stats-corps"></div>
+    <button type="button" class="secondaire" id="btn-raz">Remettre à zéro</button>
+  </div>
+</dialog>
+
+<script src="regles.js"></script>
+<script src="jeu.js"></script>
+</body>
+</html>
