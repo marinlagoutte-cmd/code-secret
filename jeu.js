@@ -30,8 +30,11 @@
 
   // Stockage local : peut être bloqué (navigation privée), le jeu marche alors sans mémoire.
   const memo = {
-    lire(k, defaut) {
-      try { const v = localStorage.getItem('codesecret:' + k); return v == null ? defaut : JSON.parse(v); } catch { return defaut; }
+    lire(k, defaut) { // donnée absente, illisible ou d'un autre type (stockage abîmé) : valeur par défaut
+      try {
+        const v = JSON.parse(localStorage.getItem('codesecret:' + k));
+        return v == null || (defaut !== null && typeof v !== typeof defaut) ? defaut : v;
+      } catch { return defaut; }
     },
     ecrire(k, v) { try { localStorage.setItem('codesecret:' + k, JSON.stringify(v)); } catch { /* pas de stockage */ } },
     effacer(k) { try { localStorage.removeItem('codesecret:' + k); } catch { /* idem */ } },
@@ -101,15 +104,16 @@
       mode, cfg: mode === 'defi' ? { ...NIVEAUX.classique } : lireReglages(),
       manche: 0, manches: +$('manches').value, points: [0, 0],
       joueurs: mode === 'ordi' ? [{ nom: nom1 }, { nom: 'L\'ordi', ordi: true }] : [{ nom: nom1 }, { nom: nom2 }],
-      possibles: $('possibles').checked,
+      possibles: $('possibles').checked && mode !== 'defi', // le défi se joue sans aide, pour tous pareil
     };
     document.body.classList.toggle('sans-chiffres', !$('chiffres').checked);
     nouvelleManche();
   }
 
   function allerMenu() {
-    const enCours = ['jeu', 'compose', 'ordi', 'passe'].includes(S.phase) && S.mode !== 'defi'
-      && (S.lignes.length > 0 || S.manche > 0 || S.phase !== 'jeu');
+    const enCours = (['jeu', 'compose', 'ordi', 'passe'].includes(S.phase) && S.mode !== 'defi'
+      && (S.lignes.length > 0 || S.manche > 0 || S.phase !== 'jeu'))
+      || (S.phase === 'fin' && estMatch() && S.manche < S.manches); // entre deux manches, le match n'est pas fini
     if (enCours && !confirm('Quitter la partie en cours ?')) return;
     arreter();
     S.phase = 'menu';
@@ -324,8 +328,8 @@
   function revanche() { S.manche = 0; S.points = [0, 0]; nouvelleManche(); }
 
   // ---------------------------------------------------------------- Défi du jour
-  function cleJour(decalage = 0) {
-    const d = new Date();
+  function cleJour(decalage = 0, depuis = null) { // depuis : 'AAAA-MM-JJ' (par défaut aujourd'hui)
+    const d = depuis ? new Date(...depuis.split('-').map((x, i) => Number(x) - (i === 1 ? 1 : 0))) : new Date();
     d.setDate(d.getDate() + decalage);
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   }
@@ -340,21 +344,24 @@
         const r = R.evaluer(e, S.code);
         S.lignes.push({ essai: e, noirs: r.noirs, blancs: r.blancs });
       }
-      S.debut = Number(sauve.debut) || Date.now();
+      S.debut = Date.now() - (Number(sauve.ecoule) || 0); // le chrono reprend là où il s'était arrêté, page fermée non comptée
       S.duree = Number(sauve.duree) || 0;
+      const fin = S.lignes.length && S.lignes[S.lignes.length - 1].noirs === 4;
       if (sauve.fini) return finManche(!!sauve.trouve, true);
+      if (fin || S.lignes.length >= S.cfg.essais) return finManche(!!fin); // partie finie mais non notée
     }
     chercher();
   }
 
   function sauverDefi(fini) {
-    memo.ecrire('defi:' + S.jour, { essais: S.lignes.map((l) => l.essai), debut: S.debut, duree: S.duree, fini, trouve: S.trouve });
+    memo.ecrire('defi:' + S.jour, { essais: S.lignes.map((l) => l.essai), ecoule: S.debut ? Date.now() - S.debut : 0,
+      duree: S.duree, fini, trouve: S.trouve });
   }
 
   function finDefi(trouve) {
     sauverDefi(true);
     const s = memo.lire('defi-serie', { serie: 0, meilleure: 0, dernier: '' });
-    s.serie = trouve ? (s.dernier === cleJour(-1) ? s.serie + 1 : 1) : 0;
+    s.serie = trouve ? (s.dernier === cleJour(-1, S.jour) ? s.serie + 1 : 1) : 0; // veille du défi joué, même fini après minuit
     s.meilleure = Math.max(s.meilleure || 0, s.serie);
     if (trouve) s.dernier = S.jour;
     memo.ecrire('defi-serie', s);
@@ -416,7 +423,7 @@
     const s = memo.lire('defi-serie', { serie: 0, meilleure: 0 });
     const auj = memo.lire('defi:' + cleJour(), null);
     bloc('📅 Défi du jour', [
-      ['Aujourd\'hui', auj && auj.fini ? (auj.trouve ? `trouvé en ${auj.essais.length}` : 'raté') : 'à jouer'],
+      ['Aujourd\'hui', auj && auj.fini ? (auj.trouve && Array.isArray(auj.essais) ? `trouvé en ${auj.essais.length}` : 'raté') : 'à jouer'],
       ['Série', serieDefi()], ['Meilleure série', s.meilleure || 0]]);
     const toutes = memo.lire('stats', {});
     const cles = Object.keys(toutes);
@@ -472,7 +479,7 @@
     const { phase } = S, trous = $('secret-trous');
     $('secret-etiquette').textContent = { compose: 'Ton code', jeu: 'Code', ordi: 'Ton code', fin: 'Le code' }[phase] || '';
     trous.replaceChildren();
-    if (phase === 'compose') { trous.append(...trousSaisie()); return; }
+    if (phase === 'compose') { trous.append(...trousSaisie()); $('secret').setAttribute('aria-label', 'Code à composer'); return; }
     for (let k = 0; k < S.cfg.trous; k++) {
       if (phase === 'jeu') trous.append(el('span', 'cache', '?'));
       else {
@@ -615,12 +622,13 @@
 
   // ---------------------------------------------------------------- Sons et confettis
   let audio = null;
+  let sonActif = memo.lire('son', true); // en mémoire aussi : le bouton marche même si le stockage est bloqué
   const SONS = {
     poser: [[660, 0.05]], valider: [[520, 0.07], [780, 0.09]], erreur: [[180, 0.14]], fin: [[440, 0.12], [550, 0.18]],
     gagne: [[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.3]], perd: [[392, 0.16], [330, 0.16], [262, 0.32]],
   };
   function son(type) {
-    if (!memo.lire('son', true)) return;
+    if (!sonActif) return;
     try {
       audio = audio || new (window.AudioContext || window.webkitAudioContext)();
       if (audio.state === 'suspended') audio.resume();
@@ -640,7 +648,7 @@
     } catch { /* pas de son disponible */ }
   }
   function majSon() {
-    const actif = memo.lire('son', true);
+    const actif = sonActif;
     $('btn-son').textContent = actif ? '🔊' : '🔇';
     $('btn-son').setAttribute('aria-pressed', String(actif));
   }
@@ -665,7 +673,9 @@
     if (e.metaKey || e.ctrlKey || e.altKey || document.querySelector('dialog[open]')) return;
     if (e.target.closest && e.target.closest('input, select, textarea')) return;
     if (!saisieActive()) return;
-    const m = /^(?:Digit|Numpad)([1-9])$/.exec(e.code || ''); // rangée du haut sans Maj sur un clavier AZERTY
+    if (e.key === 'Enter' && (e.repeat || (e.target.closest && e.target.closest('button') && !e.target.closest('#palette, .trous')))) return; // Entrée sur ⌫, 💡… : le bouton lui-même ; touche maintenue : rien
+    // e.key d'un seul caractère : pavé numérique sans VerrNum (flèches) exclu ; e.code : rangée du haut sans Maj en AZERTY
+    const m = e.key.length === 1 ? /^(?:Digit|Numpad)([1-9])$/.exec(e.code || '') : null;
     const n = m ? Number(m[1]) : Number(e.key);
     if (Number.isInteger(n) && n >= 1 && n <= S.cfg.couleurs) poser(n - 1);
     else if (e.key === 'Backspace' || e.key === 'Delete') effacer();
@@ -683,7 +693,7 @@
   $('btn-menu').onclick = allerMenu;
   $('btn-regles').onclick = () => $('dlg-regles').showModal();
   $('btn-stats').onclick = ouvrirStats;
-  $('btn-son').onclick = () => { memo.ecrire('son', !memo.lire('son', true)); majSon(); son('poser'); };
+  $('btn-son').onclick = () => { sonActif = !sonActif; memo.ecrire('son', sonActif); majSon(); son('poser'); };
   $('btn-effacer').onclick = effacer;
   $('btn-valider').onclick = valider;
   $('btn-suggestion').onclick = suggerer;
